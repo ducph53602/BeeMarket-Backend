@@ -12,17 +12,21 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::table('users', function (Blueprint $table) {
-            $table->enum('role', ['user', 'seller', 'admin'])->default('user')->after('password');
-        });
-
+        if (Schema::hasColumn('users', 'is_admin')) {
         DB::table('users')->where('is_admin', true)->update(['role' => 'admin']);
+    }
+        if (Schema::hasColumn('users', 'is_seller')) { 
         DB::table('users')->where('is_seller', true)->where('is_admin', false)->update(['role' => 'seller']);
+    }
 
-        Schema::table('users', function (Blueprint $table) {
+    Schema::table('users', function (Blueprint $table) {
+        if (Schema::hasColumn('users', 'is_admin')) {
             $table->dropColumn('is_admin');
+        }
+        if (Schema::hasColumn('users', 'is_seller')) {
             $table->dropColumn('is_seller');
-        });
+        }
+    });
     }
 
     /**
@@ -39,8 +43,10 @@ return new class extends Migration
         DB::table('users')->where('role', 'seller')->update(['is_seller' => true]);
         DB::table('users')->where('role', 'user')->update(['is_admin' => false, 'is_seller' => false]);
 
-        Schema::table('users', function (Blueprint $table) {
-            $table->dropColumn('role');
-        });
+        if (Schema::hasColumn('users', 'role')) {
+            Schema::table('users', function (Blueprint $table) {
+                $table->dropColumn('role');
+            });
+        }
     }
 };

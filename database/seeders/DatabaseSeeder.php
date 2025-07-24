@@ -2,12 +2,14 @@
 
 namespace Database\Seeders;
 
-use App\Models\User;
-use App\Models\Product; 
-use App\Models\Banner;
 use App\Models\Cart;
+use App\Models\User;
+use App\Models\Category;
+use App\Models\Banner;
 use App\Models\CartItem;
 // use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use App\Models\Product;
+use Illuminate\Support\Str;
 use Illuminate\Database\Seeder;
 
 class DatabaseSeeder extends Seeder
@@ -20,45 +22,43 @@ class DatabaseSeeder extends Seeder
         User::factory()->create([
             'name' => 'Admin User',
             'email' => 'admin@example.com',
-            'password' => bcrypt('password'), 
-            'is_admin' => true,
-            'is_seller' => true,
+            'password' => bcrypt('password'),
+            'role' => 'admin',
         ]);
 
         User::factory()->create([
             'name' => 'Seller User',
             'email' => 'seller@example.com',
-            'password' => bcrypt('password'), 
-            'is_admin' => false,
-            'is_seller' => true,
+            'password' => bcrypt('password'),
+            'role' => 'seller',
         ]);
 
         User::factory()->create([
             'name' => 'Tester User',
             'email' => 'tester@example.com',
-            'password' => bcrypt('password'), 
-            'is_admin' => false,
-            'is_seller' => false,
+            'password' => bcrypt('password'),
+            'role' => 'user',
         ]);
 
         User::factory()->create([
             'name' => 'Tester2 User',
             'email' => 'tester2@example.com',
-            'password' => bcrypt('password'), 
-            'is_admin' => false,
-            'is_seller' => false,
+            'password' => bcrypt('password'),
+            'role' => 'user',
         ]);
 
         User::factory(30)->create();
+
+        Category::factory(12)->create();
 
         $users = User::all();
 
         if ($users->isEmpty()) {
             throw new \Exception("Không tìm thấy người dùng nào để gán cho sản phẩm. Kiểm tra lại.");
         }
-        
+
         Product::factory(30)->make()->each(function ($product) use ($users) {
-            $product->user_id = $users->random()->id; 
+            $product->user_id = $users->random()->id;
             $product->save();
         });
 
@@ -74,7 +74,7 @@ class DatabaseSeeder extends Seeder
         Banner::factory()->create([
             'title' => 'Sản phẩm mới về',
             'subtitle' => 'Khám phá ngay bộ sưu tập mới!',
-            'image_path' => 'banners/banner2.jpg', 
+            'image_path' => 'banners/banner2.jpg',
             'link' => '/products?new=true',
             'is_active' => true,
             'order' => 2,

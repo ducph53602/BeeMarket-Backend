@@ -1,8 +1,9 @@
 <?php
 
 namespace Database\Factories;
-
+use App\Models\Category;
 use App\Models\Product;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Str;
 
@@ -23,8 +24,11 @@ class ProductFactory extends Factory
     public function definition(): array
     {
         $productName = $this->faker->words(3, true) . ' ' . $this->faker->unique()->word(); 
-        $categories = ['Electronics', 'Books', 'Clothing', 'Home Goods', 'Beauty', 'Food', 'Toys'];
         $statuses = ['active', 'inactive'];
+
+        $category = Category::inRandomOrder()->first();
+
+        $user = User::inRandomOrder()->first();
 
         return [
             'name' => ucfirst($productName),
@@ -33,8 +37,9 @@ class ProductFactory extends Factory
             'price' => $this->faker->randomFloat(2, 10, 1000), 
             'stock' => $this->faker->numberBetween(0, 200), 
             'image_path' => 'products/' . $this->faker->uuid() . '.jpg', 
-            'category' => $this->faker->randomElement($categories),
+            'category_id' => $category->id,
             'status' => $this->faker->randomElement($statuses),
+            'user_id' => $user->id,
             'created_at' => $this->faker->dateTimeBetween('-1 year', 'now'),
             'updated_at' => $this->faker->dateTimeBetween('-1 year', 'now'),
         ];

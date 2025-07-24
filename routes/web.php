@@ -1,18 +1,9 @@
 <?php
 
 use App\Http\Controllers\ProfileController;
-use Illuminate\Foundation\Application;
 use Illuminate\Support\Facades\Route;
-use Inertia\Inertia;
-
-// Route::get('/', function () {
-//     return Inertia::render('Welcome', [
-//         'canLogin' => Route::has('login'),
-//         'canRegister' => Route::has('register'),
-//         'laravelVersion' => Application::VERSION,
-//         'phpVersion' => PHP_VERSION,
-//     ]);
-// });
+use App\Http\Controllers\Web\HomeController; 
+use App\Http\Controllers\Web\ProductController;
 
 Route::get('/', function () {
     return view('home'); 
@@ -23,6 +14,14 @@ require __DIR__.'/auth.php';
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
+
+// Trang chủ
+Route::get('/', [HomeController::class, 'index'])->name('home');
+
+// Danh sách sản phẩm
+Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+// Chi tiết sản phẩm
+Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');

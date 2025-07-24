@@ -31,8 +31,7 @@ class UserFactory extends Factory
             'remember_token' => Str::random(10),
             'phone_number' => $this->faker->phoneNumber(), 
             'address' => $this->faker->address(),         
-            'is_seller' => $this->faker->boolean(50),  
-            'is_admin' => false,   
+            'role' => fake()->randomElement(['user', 'seller']) 
         ];
     }
 
@@ -54,7 +53,7 @@ class UserFactory extends Factory
     public function seller(): static 
     {
         return $this->state(fn (array $attributes) => [
-            'is_seller' => true,
+            'role' => 'seller',
         ]);
     }
 
@@ -64,7 +63,7 @@ class UserFactory extends Factory
     public function admin(): static 
     {
         return $this->state(fn (array $attributes) => [
-            'is_admin' => true,
+            'role' => 'admin',
         ]);
     }
 }
