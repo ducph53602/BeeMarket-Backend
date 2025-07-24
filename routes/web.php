@@ -2,9 +2,18 @@
 
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Web\HomeController;
+use App\Http\Controllers\Web\ProductController;
 
-Route::get('/', function () {
-    return view('welcome');
+Route::group([], function () {
+    // Route cho trang chủ
+    Route::get('/', [HomeController::class, 'index'])->name('home');
+
+    // Các route cho Sản phẩm
+    // Hiển thị danh sách tất cả sản phẩm
+    Route::get('/products', [ProductController::class, 'index'])->name('products.index');
+    // Hiển thị chi tiết một sản phẩm theo slug
+    Route::get('/products/{slug}', [ProductController::class, 'show'])->name('products.show');
 });
 
 Route::get('/dashboard', function () {

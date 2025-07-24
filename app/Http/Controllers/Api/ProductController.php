@@ -5,6 +5,7 @@ namespace App\Http\Controllers\Api;
 use App\Models\Product;
 use App\Models\Category;
 use Illuminate\Http\Request;
+use Illuminate\Support\Facades\Log;
 use App\Http\Controllers\Controller;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Str;         
@@ -22,68 +23,79 @@ class ProductController extends Controller
      */
     public function index(Request $request)
     {
-        $query = Product::with('category', 'user'); 
+        // $query = Product::with('category', 'user'); 
 
-        if ($request->has('search')) {
-            $search = $request->search;
-            $query->where(function ($q) use ($search) {
-                $q->where('name', 'like', '%' . $search . '%')
-                  ->orWhere('description', 'like', '%' . $search . '%');
-            });
-        }
+        // if ($request->has('search')) {
+        //     $search = $request->search;
+        //     $query->where(function ($q) use ($search) {
+        //         $q->where('name', 'like', '%' . $search . '%')
+        //           ->orWhere('description', 'like', '%' . $search . '%');
+        //     });
+        // }
 
-         if ($request->has('category_id')) {
-            $request->validate([
-                'category_id' => 'sometimes|exists:categories,id',
-            ]);
-            $query->where('category_id', $request->category_id);
-        }
+        //  if ($request->has('category_id')) {
+        //     $request->validate([
+        //         'category_id' => 'sometimes|exists:categories,id',
+        //     ]);
+        //     $query->where('category_id', $request->category_id);
+        // }
 
-        if ($request->has('category_slug')) {
-            $category = Category::where('slug', $request->category_slug)->first();
-            if ($category) {
-                $query->where('category_id', $category->id);
-            } else {
-                return response()->json(['message' => 'Danh mục không tồn tại.'], 404);
-            }
-        }
+        // if ($request->has('category_slug')) {
+        //     $category = Category::where('slug', $request->category_slug)->first();
+        //     if ($category) {
+        //         $query->where('category_id', $category->id);
+        //     } else {
+        //         return response()->json(['message' => 'Danh mục không tồn tại.'], 404);
+        //     }
+        // }
         
-        if ($request->has('min_price')) {
-            $query->where('price', '>=', $request->min_price);
-        }
-        if ($request->has('max_price')) {
-            $query->where('price', '<=', $request->max_price);
-        }
+        // if ($request->has('min_price')) {
+        //     $query->where('price', '>=', $request->min_price);
+        // }
+        // if ($request->has('max_price')) {
+        //     $query->where('price', '<=', $request->max_price);
+        // }
 
-        $sortBy = $request->input('sort_by', 'created_at'); // Giá trị mặc định là 'created_at'
-        $sortOrder = $request->input('sort_order', 'desc'); // Giá trị mặc định là 'desc' (giảm dần)
+        // $sortBy = $request->input('sort_by', 'created_at'); // Giá trị mặc định là 'created_at'
+        // $sortOrder = $request->input('sort_order', 'desc'); // Giá trị mặc định là 'desc' (giảm dần)
 
-        $validSortColumns = ['name', 'price', 'created_at'];
-        if (!in_array($sortBy, $validSortColumns)) {
-            $sortBy = 'created_at'; 
-        }
+        // $validSortColumns = ['name', 'price', 'created_at'];
+        // if (!in_array($sortBy, $validSortColumns)) {
+        //     $sortBy = 'created_at'; 
+        // }
 
-        if (!in_array(strtolower($sortOrder), ['asc', 'desc'])) {
-            $sortOrder = 'desc'; 
-        }
+        // if (!in_array(strtolower($sortOrder), ['asc', 'desc'])) {
+        //     $sortOrder = 'desc'; 
+        // }
 
-        $query->orderBy($sortBy, $sortOrder);
+        // $query->orderBy($sortBy, $sortOrder);
 
-        if ($request->has('in_stock')) {
-            if (filter_var($request->in_stock, FILTER_VALIDATE_BOOLEAN)) { // Chuyển đổi chuỗi "true"/"false" sang boolean
-                $query->where('stock', '>', 0);
-            } else {
-                $query->where('stock', '=', 0);
-            }
-        }
+        // if ($request->has('in_stock')) {
+        //     if (filter_var($request->in_stock, FILTER_VALIDATE_BOOLEAN)) { // Chuyển đổi chuỗi "true"/"false" sang boolean
+        //         $query->where('stock', '>', 0);
+        //     } else {
+        //         $query->where('stock', '=', 0);
+        //     }
+        // }
 
-        $products = $query->where('status', 'active') 
-                          ->latest() 
-                          ->paginate(10); 
+        // $products = $query->where('status', 'active') 
+        //                   ->latest() 
+        //                   ->paginate(10); 
 
+        $products = Product::with('category', 'user')
+                       ->where('status', 'active')
+                       ->latest()
+                       ->take(10) // Lấy chỉ 10 sản phẩm
+                       ->get(); // Dùng get() thay vì paginate() tạm thời
+
+    // Log kết quả để kiểm tra dữ liệu trước khi trả về
+    Log::info('API Products Response Data:', ['products_count' => $products->count(), 'first_product_category' => $products->first()->category->name ?? 'N/A']);
         return response()->json([
             'message' => 'Lấy danh sách sản phẩm thành công.',
-            'products' => $products
+            'products' => [ // Vẫn giữ cấu trúc phân trang nếu bạn có ý định sử dụng nó sau này
+            'data' => $products->toArray(), // Chuyển Collection sang array
+            // Không có links hay meta nếu dùng get()
+        ]
         ]);
     }
 

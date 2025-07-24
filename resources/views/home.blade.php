@@ -1,13 +1,11 @@
 @extends('layouts.app')
 
-@section('title', 'Trang Chủ')
-
-@section('header')
-    {{-- Nếu bạn muốn có tiêu đề riêng cho trang này, nhưng thường đã có header chung rồi --}}
-    {{-- <h2 class="font-semibold text-xl text-gray-800 leading-tight">Trang Chủ</h2> --}}
-@endsection
-
 @section('content')
+<x-slot name="header">
+        <h2 class="font-semibold text-xl text-gray-800 leading-tight">
+            {{ __('Trang chủ') }}
+        </h2>
+    </x-slot>
     <div class="py-12">
         <div class="max-w-7xl mx-auto sm:px-6 lg:px-8">
             <div class="mb-8">
