@@ -2,26 +2,14 @@
 
 use App\Http\Controllers\ProfileController;
 use Illuminate\Support\Facades\Route;
-use App\Http\Controllers\Web\HomeController; 
-use App\Http\Controllers\Web\ProductController;
 
 Route::get('/', function () {
-    return view('home'); 
-})->name('home');
-
-require __DIR__.'/auth.php';
+    return view('welcome');
+});
 
 Route::get('/dashboard', function () {
     return view('dashboard');
 })->middleware(['auth', 'verified'])->name('dashboard');
-
-// Trang chủ
-Route::get('/', [HomeController::class, 'index'])->name('home');
-
-// Danh sách sản phẩm
-Route::get('/products', [ProductController::class, 'index'])->name('products.index');
-// Chi tiết sản phẩm
-Route::get('/products/{product}', [ProductController::class, 'show'])->name('products.show');
 
 Route::middleware('auth')->group(function () {
     Route::get('/profile', [ProfileController::class, 'edit'])->name('profile.edit');
