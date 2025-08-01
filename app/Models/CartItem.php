@@ -16,23 +16,13 @@ class CartItem extends Model
         'quantity',
     ];
 
-    protected $casts = [
-        'quantity' => 'integer',
-    ];
-
-    /**
-     * Get the cart that owns the cart item.
-     */
-    public function cart(): BelongsTo
+    public function cart()
     {
-        return $this->belongsTo(Cart::class);
+        return $this->belongsTo(Cart::class, 'cart_id');
     }
 
-    /**
-     * Get the product associated with the cart item.
-     */
-    public function product(): BelongsTo
+    public function product()
     {
-        return $this->belongsTo(Product::class);
+        return $this->belongsTo(Product::class, 'product_id');
     }
 }

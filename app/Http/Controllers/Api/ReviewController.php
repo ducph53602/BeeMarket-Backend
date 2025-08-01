@@ -5,87 +5,64 @@ namespace App\Http\Controllers\Api;
 use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Review;
-use App\Models\Order; 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\DB;
 
 class ReviewController extends Controller
 {
     /**
-     * Lấy tất cả đánh giá cho một sản phẩm cụ thể.
-     * GET /api/products/{product}/reviews
+     * Display a listing of reviews for a specific product.
+     * Public API: GET /api/products/{product:slug}/reviews
      *
      * @param  \App\Models\Product  $product
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index(Product $product)
+    public function productReviews(Product $product)
     {
-        $reviews = $product->reviews()->with('user')->latest()->paginate(10);
-
-        return response()->json([
-            'message' => 'Lấy danh sách đánh giá thành công.',
-            'product_id' => $product->id,
-            'reviews' => $reviews
-        ], 200);
+        $reviews = $product->reviews()->with('user')->latest()->paginate(5);
+        return response()->json($reviews);
     }
 
     /**
-     * Gửi đánh giá và bình luận cho một sản phẩm đã mua.
-     * POST /api/reviews
+     * Store a newly created review in storage.
+     * User API: POST /api/products/{product:slug}/reviews
      *
      * @param  \Illuminate\Http\Request  $request
+     * @param  \App\Models\Product  $product
      * @return \Illuminate\Http\JsonResponse
      */
-    public function store(Request $request)
+    public function store(Request $request, Product $product)
     {
-        $user = Auth::user();
+        // Authorization: Only authenticated users can review
+        // (Handled by auth:sanctum middleware on the route group)
 
         $request->validate([
-            'product_id' => 'required|exists:products,id',
             'rating' => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string|max:1000',
-        ], [
-            'product_id.required' => 'ID sản phẩm là bắt buộc.',
-            'product_id.exists' => 'Sản phẩm không tồn tại.',
-            'rating.required' => 'Số sao đánh giá là bắt buộc.',
-            'rating.integer' => 'Số sao đánh giá phải là số nguyên.',
-            'rating.min' => 'Số sao đánh giá phải từ 1 đến 5.',
-            'rating.max' => 'Số sao đánh giá phải từ 1 đến 5.',
-            'comment.max' => 'Bình luận không được vượt quá 1000 ký tự.',
         ]);
 
-        $productId = $request->product_id;
+        // Check if the user has already reviewed this product
+        $existingReview = Review::where('user_id', Auth::id())
+                                ->where('product_id', $product->id)
+                                ->first();
 
-        DB::beginTransaction();
-        try {
-            $review = Review::create([
-                'user_id' => $user->id,
-                'product_id' => $productId,
-                'rating' => $request->rating,
-                'comment' => $request->comment,
-            ]);
-
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Đánh giá sản phẩm thành công.',
-                'review' => $review
-            ], 201); 
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Đã xảy ra lỗi khi gửi đánh giá.',
-                'error' => $e->getMessage()
-            ], 500);
+        if ($existingReview) {
+            return response()->json(['message' => 'You have already reviewed this product.'], 409);
         }
+
+        $review = $product->reviews()->create([
+            'user_id' => Auth::id(),
+            'rating' => $request->rating,
+            'comment' => $request->comment,
+        ]);
+
+        $review->load('user'); // Load user relationship for the response
+        return response()->json($review, 201);
     }
 
     /**
-     * Cập nhật một đánh giá cụ thể.
-     * PUT/PATCH /api/reviews/{review}
+     * Update the specified review in storage.
+     * User API: PUT /api/reviews/{review}
      *
      * @param  \Illuminate\Http\Request  $request
      * @param  \App\Models\Review  $review
@@ -93,72 +70,88 @@ class ReviewController extends Controller
      */
     public function update(Request $request, Review $review)
     {
-        if (Auth::id() !== $review->user_id) {
-            return response()->json(['message' => 'Bạn không có quyền chỉnh sửa đánh giá này.'], 403);
+        // Authorization: Only the owner of the review can update it
+        if ($review->user_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized to update this review.'], 403);
         }
 
         $request->validate([
-            'rating' => 'sometimes|integer|min:1|max:5', // 'sometimes' nghĩa là không bắt buộc phải có
+            'rating' => 'required|integer|min:1|max:5',
             'comment' => 'nullable|string|max:1000',
-        ], [
-            'rating.integer' => 'Số sao đánh giá phải là số nguyên.',
-            'rating.min' => 'Số sao đánh giá phải từ 1 đến 5.',
-            'rating.max' => 'Số sao đánh giá phải từ 1 đến 5.',
-            'comment.max' => 'Bình luận không được vượt quá 1000 ký tự.',
         ]);
 
-        DB::beginTransaction();
-        try {
-            $review->update([
-                'rating' => $request->input('rating', $review->rating), // Nếu không gửi rating, giữ nguyên giá trị cũ
-                'comment' => $request->input('comment', $review->comment), // Nếu không gửi comment, giữ nguyên giá trị cũ
-            ]);
+        $review->update([
+            'rating' => $request->rating,
+            'comment' => $request->comment,
+        ]);
 
-            DB::commit();
-
-            return response()->json([
-                'message' => 'Cập nhật đánh giá thành công.',
-                'review' => $review
-            ], 200);
-
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Đã xảy ra lỗi khi cập nhật đánh giá.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        $review->load('user');
+        return response()->json($review);
     }
 
     /**
-     * Xóa một đánh giá cụ thể.
-     * DELETE /api/reviews/{review}
+     * Remove the specified review from storage.
+     * User API: DELETE /api/reviews/{review}
      *
      * @param  \App\Models\Review  $review
      * @return \Illuminate\Http\JsonResponse
      */
     public function destroy(Review $review)
     {
-        if (Auth::id() !== $review->user_id) {
-            return response()->json(['message' => 'Bạn không có quyền xóa đánh giá này.'], 403);
+        // Authorization: Only the owner of the review or an admin can delete it
+        if ($review->user_id !== Auth::id() && !Auth::user()->isAdmin()) {
+            return response()->json(['message' => 'Unauthorized to delete this review.'], 403);
         }
 
-        DB::beginTransaction();
-        try {
-            $review->delete();
+        $review->delete();
+        return response()->json(['message' => 'Review deleted successfully.'], 200);
+    }
 
-            DB::commit();
+    /**
+     * Display a listing of reviews for products owned by the authenticated seller.
+     * Seller API: GET /api/seller/reviews
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sellerReviews()
+    {
+        // Authorization handled by middleware 'role:seller'
+        $sellerId = Auth::id();
 
-            return response()->json([
-                'message' => 'Xóa đánh giá thành công.'
-            ], 200);
+        $reviews = Review::whereHas('product', function ($query) use ($sellerId) {
+            $query->where('user_id', $sellerId);
+        })
+        ->with(['user', 'product'])
+        ->latest()
+        ->paginate(10);
 
-        } catch (\Exception $e) {
-            DB::rollBack();
-            return response()->json([
-                'message' => 'Đã xảy ra lỗi khi xóa đánh giá.',
-                'error' => $e->getMessage()
-            ], 500);
-        }
+        return response()->json($reviews);
+    }
+
+    /**
+     * Display a listing of all reviews (for admin).
+     * Admin API: GET /api/admin/reviews
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function adminReviews()
+    {
+        // Authorization handled by middleware 'role:admin'
+        $reviews = Review::with(['user', 'product'])->latest()->paginate(10);
+        return response()->json($reviews);
+    }
+
+    /**
+     * Remove the specified review from storage by admin.
+     * Admin API: DELETE /api/admin/reviews/{review}
+     *
+     * @param  \App\Models\Review  $review
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function destroyByAdmin(Review $review)
+    {
+        // Authorization handled by middleware 'role:admin'
+        $review->delete();
+        return response()->json(['message' => 'Review deleted by admin successfully.'], 200);
     }
 }

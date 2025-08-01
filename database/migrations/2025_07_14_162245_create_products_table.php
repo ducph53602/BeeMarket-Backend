@@ -13,18 +13,19 @@ return new class extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-            $table->foreignId('user_id')->constrained()->onDelete('cascade'); 
-            $table->foreignId('category_id')->nullable()->constrained('categories')->onDelete('set null'); 
             $table->string('name');
-            $table->string('slug')->unique(); 
-            $table->longText('description')->nullable();
+            $table->string('slug')->unique();
+            $table->text('description')->nullable();
             $table->decimal('price', 10, 2);
-            $table->integer('stock');
-            $table->string('condition')->nullable(); 
-            $table->string('location')->nullable(); 
-            $table->string('image_path')->nullable(); 
-            $table->string('category')->nullable();
-            $table->string('status')->default('active'); 
+            $table->integer('quantity')->default(0);
+            $table->string('image')->nullable(); // Path to the product image
+            
+            // Foreign key for the seller (user)
+            $table->foreignId('user_id')->constrained('users')->onDelete('cascade');
+            
+            // Foreign key for the category
+            $table->foreignId('category_id')->constrained('categories')->onDelete('cascade');
+            
             $table->timestamps();
         });
     }

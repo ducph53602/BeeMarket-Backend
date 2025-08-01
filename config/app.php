@@ -30,6 +30,17 @@ return [
 
     /*
     |--------------------------------------------------------------------------
+    | API Base URL
+    |--------------------------------------------------------------------------
+    |    | This URL is used as the base for API requests. It should be set to the
+    |    | root of your API. This is typically the same as your application URL
+    |    | but with "/api" appended to the end.         
+    */
+
+    'api_url' => env('API_URL', 'http://localhost/api'),
+
+    /*
+    |--------------------------------------------------------------------------
     | Application Debug Mode
     |--------------------------------------------------------------------------
     |
@@ -53,7 +64,7 @@ return [
     */
 
     'url' => env('APP_URL', 'http://localhost'),
-
+    'asset_url' => env('ASSET_URL', null),
     /*
     |--------------------------------------------------------------------------
     | Application Timezone

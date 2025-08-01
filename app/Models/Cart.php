@@ -13,22 +13,23 @@ class Cart extends Model
 
     protected $fillable = [
         'user_id',
-        'session_id',
     ];
 
     /**
-     * Get the user that owns the cart.
+     * Lấy người dùng sở hữu mục giỏ hàng này.
      */
     public function user(): BelongsTo
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
     /**
-     * Get the items for the cart.
+     * Get the cart items for the cart.
+     *
+     * @return \Illuminate\Database\Eloquent\Relations\HasMany
      */
     public function cartItems(): HasMany
     {
-        return $this->hasMany(CartItem::class);
+        return $this->hasMany(CartItem::class, 'cart_id');
     }
 }

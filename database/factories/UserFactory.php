@@ -7,38 +7,35 @@ use Illuminate\Database\Eloquent\Factories\Factory;
 use Illuminate\Support\Facades\Hash;
 use Illuminate\Support\Str;
 
+/**
+ * @extends \Illuminate\Database\Eloquent\Factories\Factory<\App\Models\User>
+ */
 class UserFactory extends Factory
 {
     /**
-     * Tên của model tương ứng.
-     *
-     * @var string
+     * The current password being used by the factory.
      */
-    protected $model = User::class;
+    protected static ?string $password;
 
     /**
-     * Định nghĩa trạng thái mặc định của model.
+     * Define the model's default state.
      *
      * @return array<string, mixed>
      */
     public function definition(): array
     {
         return [
-            'name' => $this->faker->name(),
-            'email' => $this->faker->unique()->safeEmail(),
+            'name' => fake()->name(),
+            'email' => fake()->unique()->safeEmail(),
             'email_verified_at' => now(),
-            'password' => Hash::make('password'), 
+            'password' => static::$password ??= Hash::make('password'),
             'remember_token' => Str::random(10),
-            'phone_number' => $this->faker->phoneNumber(), 
-            'address' => $this->faker->address(),         
-            'role' => fake()->randomElement(['user', 'seller']) 
+            'role' => fake()->randomElement(['user', 'seller', 'admin']), 
         ];
     }
 
     /**
-     * Indicate that the user is unverified.
-     *
-     * @return static
+     * Indicate that the model's email address should be unverified.
      */
     public function unverified(): static
     {
@@ -48,9 +45,19 @@ class UserFactory extends Factory
     }
 
     /**
+     * Indicate that the user is an admin.
+     */
+    public function admin(): static
+    {
+        return $this->state(fn (array $attributes) => [
+            'role' => 'admin',
+        ]);
+    }
+
+    /**
      * Indicate that the user is a seller.
      */
-    public function seller(): static 
+    public function seller(): static
     {
         return $this->state(fn (array $attributes) => [
             'role' => 'seller',
@@ -58,12 +65,13 @@ class UserFactory extends Factory
     }
 
     /**
-     * Indicate that the user is an admin.
+     * Indicate that the user is a regular user (customer).
      */
-    public function admin(): static 
+    public function customer(): static
     {
         return $this->state(fn (array $attributes) => [
-            'role' => 'admin',
+            'role' => 'user',
         ]);
     }
 }
+

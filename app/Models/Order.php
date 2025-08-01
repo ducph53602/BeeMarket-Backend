@@ -13,27 +13,23 @@ class Order extends Model
 
     protected $fillable = [
         'user_id',
-        'order_number',
         'total_amount',
-        'shipping_address',
-        'customer_phone',
-        'customer_name',
-        'customer_email',
         'status',
-        'notes',
+        'shipping_address',
+        'phone_number',
     ];
 
     protected $casts = [
         'total_amount' => 'decimal:2',
     ];
 
-    public function user(): BelongsTo
+    public function user()
     {
-        return $this->belongsTo(User::class);
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    public function orderItems(): HasMany
+    public function orderItems()
     {
-        return $this->hasMany(OrderItem::class);
+        return $this->hasMany(OrderItem::class, 'order_id');
     }
 }

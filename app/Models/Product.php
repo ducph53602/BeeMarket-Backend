@@ -4,74 +4,50 @@ namespace App\Models;
 
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
-use Illuminate\Database\Eloquent\Relations\BelongsTo; 
-use Illuminate\Database\Eloquent\Relations\HasMany;  
-
+use Illuminate\Database\Eloquent\Relations\BelongsTo;
+use Illuminate\Database\Eloquent\Relations\HasMany;
+use Illuminate\Database\Eloquent\SoftDeletes;
 class Product extends Model
 {
-    use HasFactory;
+    use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'user_id', 
         'name',
         'slug',
         'description',
         'price',
-        'stock',
-        'image_path',
+        'quantity',
+        'image',
+        'user_id',
         'category_id',
-        'status',
     ];
 
-    protected $casts = [
-        'price' => 'decimal:2',
-        'stock' => 'integer',
-    ];
-
-    /**
-     * Get the user (seller) that owns the product.
-     */
-    public function user(): BelongsTo
+    public function getRouteKeyName(): string
     {
-        return $this->belongsTo(User::class);
+        return 'slug';
+    }
+    public function user()
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 
-    /**
-     * Một sản phẩm thuộc về một danh mục.
-     */
-    public function category() // Định nghĩa mối quan hệ
+    public function category()
     {
-        return $this->belongsTo(Category::class);
+        return $this->belongsTo(Category::class, 'category_id');
     }
-    
-    /**
-     * Get the order items for the product.
-     */
-    public function orderItems(): HasMany
+
+    public function cartItems()
     {
-        return $this->hasMany(OrderItem::class);
+        return $this->hasMany(CartItem::class, 'product_id');
     }
-    /**
-     * Một sản phẩm có nhiều đánh giá.
-     */
+
+    public function orderItems()
+    {
+        return $this->hasMany(OrderItem::class, 'product_id');
+    }
+
     public function reviews()
     {
-        return $this->hasMany(Review::class);
-    }
-
-    /**
-     * Tính toán điểm đánh giá trung bình.
-     */
-    public function averageRating()
-    {
-        return $this->reviews()->avg('rating');
-    }
-
-    /**
-     * Đếm tổng số đánh giá.
-     */
-    public function reviewsCount()
-    {
-        return $this->reviews()->count();
+        return $this->hasMany(Review::class, 'product_id');
     }
 }

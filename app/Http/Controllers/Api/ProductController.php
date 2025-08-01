@@ -1,333 +1,304 @@
 <?php
 
-namespace App\Http\Controllers\Api; 
+namespace App\Http\Controllers\Api;
 
+use App\Http\Controllers\Controller;
 use App\Models\Product;
 use App\Models\Category;
+use App\Models\User; 
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Log;
-use App\Http\Controllers\Controller;
+use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Support\Str;         
-use Illuminate\Validation\Rule;     
 use Illuminate\Support\Facades\Storage;
-
+use Illuminate\Support\Js;
+use Illuminate\Support\Str; // For Str::slug
 class ProductController extends Controller
 {
     /**
-     * Display a listing of products (publicly accessible).
-     * This is for regular users to see all active products with search functionality.
+     * Display a listing of products.
+     * Public API: GET /api/products
+     * Supports: search (q), category_id, min_price, max_price, sort_by, sort_order, pagination.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function index(Request $request)
+    public function index(Request $request): JsonResponse
     {
-        // $query = Product::with('category', 'user'); 
+        $query = Product::with(['category', 'user', 'reviews']); // Eager load category and seller
 
-        // if ($request->has('search')) {
-        //     $search = $request->search;
-        //     $query->where(function ($q) use ($search) {
-        //         $q->where('name', 'like', '%' . $search . '%')
-        //           ->orWhere('description', 'like', '%' . $search . '%');
-        //     });
-        // }
-
-        //  if ($request->has('category_id')) {
-        //     $request->validate([
-        //         'category_id' => 'sometimes|exists:categories,id',
-        //     ]);
-        //     $query->where('category_id', $request->category_id);
-        // }
-
-        // if ($request->has('category_slug')) {
-        //     $category = Category::where('slug', $request->category_slug)->first();
-        //     if ($category) {
-        //         $query->where('category_id', $category->id);
-        //     } else {
-        //         return response()->json(['message' => 'Danh mục không tồn tại.'], 404);
-        //     }
-        // }
-        
-        // if ($request->has('min_price')) {
-        //     $query->where('price', '>=', $request->min_price);
-        // }
-        // if ($request->has('max_price')) {
-        //     $query->where('price', '<=', $request->max_price);
-        // }
-
-        // $sortBy = $request->input('sort_by', 'created_at'); // Giá trị mặc định là 'created_at'
-        // $sortOrder = $request->input('sort_order', 'desc'); // Giá trị mặc định là 'desc' (giảm dần)
-
-        // $validSortColumns = ['name', 'price', 'created_at'];
-        // if (!in_array($sortBy, $validSortColumns)) {
-        //     $sortBy = 'created_at'; 
-        // }
-
-        // if (!in_array(strtolower($sortOrder), ['asc', 'desc'])) {
-        //     $sortOrder = 'desc'; 
-        // }
-
-        // $query->orderBy($sortBy, $sortOrder);
-
-        // if ($request->has('in_stock')) {
-        //     if (filter_var($request->in_stock, FILTER_VALIDATE_BOOLEAN)) { // Chuyển đổi chuỗi "true"/"false" sang boolean
-        //         $query->where('stock', '>', 0);
-        //     } else {
-        //         $query->where('stock', '=', 0);
-        //     }
-        // }
-
-        // $products = $query->where('status', 'active') 
-        //                   ->latest() 
-        //                   ->paginate(10); 
-
-        $products = Product::with('category', 'user')
-                       ->where('status', 'active')
-                       ->latest()
-                       ->take(10) // Lấy chỉ 10 sản phẩm
-                       ->get(); // Dùng get() thay vì paginate() tạm thời
-
-    // Log kết quả để kiểm tra dữ liệu trước khi trả về
-    Log::info('API Products Response Data:', ['products_count' => $products->count(), 'first_product_category' => $products->first()->category->name ?? 'N/A']);
-        return response()->json([
-            'message' => 'Lấy danh sách sản phẩm thành công.',
-            'products' => [ // Vẫn giữ cấu trúc phân trang nếu bạn có ý định sử dụng nó sau này
-            'data' => $products->toArray(), // Chuyển Collection sang array
-            // Không có links hay meta nếu dùng get()
-        ]
-        ]);
-    }
-
-    /**
-     * Lấy danh sách tất cả sản phẩm (bao gồm cả active/inactive) cho Admin.
-     * GET /api/admin/products
-     *
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function adminIndex(Request $request)
-    {
-        $query = Product::with('category', 'user'); 
-
-        if ($request->has('search')) {
-            $search = $request->search;
+        // Search by product name or description
+        if ($request->has('q')) {
+            $search = $request->q;
             $query->where(function ($q) use ($search) {
                 $q->where('name', 'like', '%' . $search . '%')
                   ->orWhere('description', 'like', '%' . $search . '%');
             });
         }
 
+        // Filter by category
         if ($request->has('category_id')) {
             $query->where('category_id', $request->category_id);
         }
-        if ($request->has('category_slug')) {
-            $category = Category::where('slug', $request->category_slug)->first();
-            if ($category) {
-                $query->where('category_id', $category->id);
-            } else {
-                return response()->json(['message' => 'Danh mục không tồn tại.'], 404);
-            }
+
+        if ($request->has('limit')) {
+            $query->limit($request->limit);
+        }
+        
+        // Filter by price range
+        if ($request->has('min_price')) {
+            $query->where('price', '>=', $request->min_price);
+        }
+        if ($request->has('max_price')) {
+            $query->where('price', '<=', $request->max_price);
         }
 
-        if ($request->has('status') && in_array($request->status, ['active', 'inactive'])) {
-            $query->where('status', $request->status);
-        }
+        // Sorting
+        $sortBy = $request->get('sort_by', 'created_at'); // Default sort by creation date
+        $sortOrder = $request->get('sort_order', 'desc'); // Default sort order descending
 
-        $sortBy = $request->input('sort_by', 'created_at'); 
-        $sortOrder = $request->input('sort_order', 'desc'); 
-
-        $validSortColumns = ['name', 'price', 'created_at', 'status', 'stock']; 
-        if (!in_array($sortBy, $validSortColumns)) {
-            $sortBy = 'created_at'; 
+        // Validate sort_by to prevent SQL injection
+        $allowedSorts = ['name', 'price', 'created_at'];
+        if (!in_array($sortBy, $allowedSorts)) {
+            $sortBy = 'created_at';
         }
         if (!in_array(strtolower($sortOrder), ['asc', 'desc'])) {
-            $sortOrder = 'desc'; 
+            $sortOrder = 'desc';
         }
+
         $query->orderBy($sortBy, $sortOrder);
 
-        $products = $query->paginate(10); 
+        // Pagination
+        $products = $query->paginate(12); // 12 products per page
 
-        return response()->json([
-            'message' => 'Lấy danh sách tất cả sản phẩm thành công.',
-            'products' => $products
-        ]);
+        $products->getCollection()->transform(function ($product) {
+            if ($product->image) {
+                $product->image = Storage::url($product->image);
+            }
+            return $product;
+        });
+
+        return response()->json($products);
     }
 
     /**
      * Display the specified product.
-     * Accessible publicly, but with checks for inactive products.
+     * Public API: GET /api/products/{product:slug}
      *
      * @param  \App\Models\Product  $product
      * @return \Illuminate\Http\JsonResponse
-     * @param  \App\Models\User  $user
      */
     public function show(Product $product)
     {
-        $product->load('category', 'user');
-
-        if ($product->status !== 'active' && (!Auth::check() || ($product->user_id !== Auth::id() && !Auth::user()->isAdmin()))) {
-            return response()->json(['message' => 'Sản phẩm không tìm thấy hoặc không hoạt động.'], 404);
+        $product->load(['category', 'user', 'reviews.user']); 
+        
+        if ($product->image) {
+            $product->image = Storage::url($product->image);
         }
-        return response()->json([
-            'message' => 'Lấy thông tin sản phẩm thành công.',
-            'product' => $product
-        ], 200);
+
+        return response()->json($product);
     }
 
     /**
-     * Display a listing of products owned by the authenticated seller/admin.
-     * This is specifically for sellers to manage ONLY their products.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function sellerProducts()
-    {
-        $user = Auth::user();
-
-        if (!$user->isSeller()) {
-            return response()->json(['message' => 'Bạn không có quyền truy cập chức năng này.'], 403);
-        }
-
-        $products = Product::with('category')
-                           ->where('user_id', $user->id)
-                           ->latest()
-                           ->paginate(10); 
-
-        return response()->json([
-            'message' => 'Lấy danh sách sản phẩm của người bán thành công.',
-            'products' => $products
-        ], 200);
-    }
-
-    /**
-     * Store a newly created product in storage by a seller/admin.
+     * Store a newly created product in storage.
+     * Seller API: POST /api/seller/products
+     * Requires 'seller' or 'admin' role.
      *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
     public function store(Request $request)
     {
-        $user = Auth::user();
-
-        if (!$user->isSeller()) {
-            return response()->json(['message' => 'Bạn không có quyền tạo sản phẩm.'], 403);
+        // Authorization: Only sellers or admins can create products
+        if (!Auth::user()->isSeller()) {
+            return response()->json(['message' => 'Unauthorized to create product.'], 403);
         }
 
-        $validatedData = $request->validate([
+        $request->validate([
             'name' => 'required|string|max:255',
             'description' => 'nullable|string',
             'price' => 'required|numeric|min:0',
-            'stock' => 'required|integer|min:0',
-            'category_id' => 'nullable|exists:categories,id',
-            'condition' => 'nullable|string|max:255',
-            'location' => 'nullable|string|max:255',
-            'image' => 'nullable|image|max:2048', 
-            'status' => ['required', 'string', Rule::in(['active', 'inactive'])], 
+            'quantity' => 'required|integer|min:0',
+            'category_id' => 'required|exists:categories,id',
+            'image' => 'nullable|image|max:2048', // Max 2MB, image file
         ]);
 
+        $imagePath = null;
         if ($request->hasFile('image')) {
-            $imagePath = $request->file('image')->store('products', 'public'); 
-            $validatedData['image_path'] = $imagePath;
+            // Store image in public storage and get its path
+            $imagePath = $request->file('image')->store('products', 'public');
         }
 
-        $validatedData['slug'] = Str::slug($validatedData['name']) . '-' . rand(1000, 9999);
-        $validatedData['user_id'] = $user->id;
+        $product = Auth::user()->products()->create([
+            'name' => $request->name,
+            'slug' => Str::slug($request->name),
+            'description' => $request->description,
+            'price' => $request->price,
+            'quantity' => $request->quantity,
+            'image' => $imagePath, // Store the relative path
+            'category_id' => $request->category_id,
+        ]);
 
-        $product = Product::create($validatedData);
+        // Return the product with its full image URL
+        $product->image = Storage::url($product->image);
+        $product->load('category', 'user');
 
-        return response()->json([
-            'message' => 'Sản phẩm đã được tạo thành công.',
-            'product' => $product
-        ], 201);
+        return response()->json($product, 201);
     }
 
     /**
-     * Update the specified product in storage by its owner or an admin.
+     * Update the specified product in storage.
+     * Seller API: PUT /api/seller/products/{product}
+     * Only allows updating quantity by the product owner (seller/admin).
      *
      * @param  \Illuminate\Http\Request  $request
-     * @param  \App\Models\Product  $product  (Laravel tự động inject model Product dựa trên ID)
+     * @param  \App\Models\Product  $product
      * @return \Illuminate\Http\JsonResponse
      */
-    public function update(Request $request, Product $product)
+    public function update(Request $request, int $productId)
     {
-        $user = Auth::user();
+        // $query = Product::with(['category', 'user', 'reviews']);
 
-    if ($product->user_id !== $user->id && !$user->isAdmin()) {
-        return response()->json(['message' => 'Bạn không có quyền cập nhật sản phẩm này.'], 403);
-    }
+        // Authorization: Only the product owner (seller/admin) can update
+        // if (Auth::user()->id !== $product->user_id && !Auth::user()->isAdmin()) {
+        //     return response()->json(['message' => 'Unauthorized to update this product.'], 403);
+        // }
 
-    // DEBUG: In ra toàn bộ request để xem Laravel nhận được gì
-    dd($request->all());
+        // $request->validate([
+        //     'quantity' => 'required|integer|min:0', // Only quantity can be updated by seller
+        // ]);
 
-    $validatedData = $request->validate([
-        'name' => 'sometimes|required|string|max:255',
-        'description' => 'nullable|string',
-        'price' => 'sometimes|required|numeric|min:0',
-        'stock' => 'sometimes|required|integer|min:0',
-        'category_id' => 'nullable|exists:categories,id',
-        'condition' => 'nullable|string|max:255',
-        'location' => 'nullable|string|max:255',
-        'image' => 'nullable|image|max:2048', 
-        'status' => ['sometimes', 'required', 'string', Rule::in(['active', 'inactive'])],
-    ]);
+        // $product->update([
+        //     'quantity' => $request->quantity,
+        // ]);
 
-    // DEBUG: In ra dữ liệu sau khi validate để xem những trường nào được chấp nhận
-    // dd($validatedData)
+        // $product->load('category', 'user'); // Reload relationships after update
 
-        if ($request->hasFile('image')) {
-            // Tùy chọn: Xóa ảnh cũ nếu tồn tại
-            if ($product->image_path && Storage::disk('public')->exists($product->image_path)) {
-                Storage::disk('public')->delete($product->image_path);
-            }
-            $imagePath = $request->file('image')->store('products', 'public');
-            $validatedData['image_path'] = $imagePath;
-        } elseif (!isset($validatedData['image']) && ($request->isMethod('put') || $request->isMethod('patch'))) {
-            // Nếu không có ảnh mới và đang cập nhật, bỏ qua trường ảnh
-            unset($validatedData['image']); 
+         $user = Auth::user();
+        $product = Product::where('id', $productId)->where('user_id', $user->id)->first();
+
+        if (!$product) {
+            // If product not found or not owned by the current user
+            return response()->json(['message' => 'Product not found or unauthorized.'], 404);
         }
 
-        if (isset($validatedData['name'])) {
-             $validatedData['slug'] = Str::slug($validatedData['name']) . '-' . rand(1000, 9999);
-        }
-
-        if (empty($validatedData)) {
-            return response()->json(['message' => 'Không có dữ liệu để cập nhật.'], 400);
-        }
-
-        $product->update($validatedData);
-
-        return response()->json([
-            'message' => 'Sản phẩm đã được cập nhật thành công.',
-            'product' => $product
+        // Validate the request data
+        $request->validate([
+            'name' => 'sometimes|required|string|max:255',
+            'description' => 'nullable|string',
+            'price' => 'sometimes|required|numeric|min:0',
+            'quantity' => 'sometimes|required|integer|min:0',
+            'category_id' => 'sometimes|required|exists:categories,id',
+            'image' => 'nullable|image|max:2048', // Image is optional for update
         ]);
+
+        $data = $request->only(['name', 'description', 'price', 'quantity', 'category_id']);
+
+        // Update slug if name is changed
+        if ($request->has('name')) {
+            $data['slug'] = Str::slug($request->name);
+        }
+
+        // Handle image upload if provided
+        if ($request->hasFile('image')) {
+            // Delete old image if it exists
+            if ($product->image && Storage::disk('public')->exists($product->image)) {
+                Storage::disk('public')->delete($product->image);
+            }
+            $data['image'] = $request->file('image')->store('products', 'public');
+        }
+// dd($data);
+        $product->update($data);
+
+        $product->image = Storage::url($product->image); // Return full URL
+        $product->load('category'); // Load category for response
+
+        return response()->json($product, 200);
     }
 
     /**
-     * Remove the specified product from storage by its owner or an admin.
+     * Remove the specified product from storage.
+     * Seller API: DELETE /api/seller/products/{product}
+     * Only allows deletion by the product owner (seller/admin).
      *
-     * @param  \App\Models\Product  $product 
+     * @param  \App\Models\Product  $product
      * @return \Illuminate\Http\JsonResponse
-     * @param  \App\Models\User  $user
      */
-    public function destroy(Product $product)
+    public function destroy(int $productId)
     {
-        /**
-         * @var mixed
-         */
         $user = Auth::user();
+        $product = Product::where('id', $productId)->where('user_id', $user->id)->first();
 
-        if ($product->user_id !== $user->id && !$user->isAdmin()) {
-            return response()->json(['message' => 'Bạn không có quyền xóa sản phẩm này.'], 403);
+        if (!$product) {
+            // If product not found or not owned by the current user
+            return response()->json(['message' => 'Product not found or unauthorized.'], 404);
         }
 
-        // Tùy chọn: Xóa ảnh liên quan khi xóa sản phẩm
-        if ($product->image_path && Storage::disk('public')->exists($product->image_path)) {
-            Storage::disk('public')->delete($product->image_path);
+        // Delete associated image file
+        if ($product->image && Storage::disk('public')->exists($product->image)) {
+            Storage::disk('public')->delete($product->image);
         }
 
         $product->delete();
+        return response()->json(['message' => 'Product deleted successfully.'], 200);
+    }
 
-        return response()->json(['message' => 'Sản phẩm đã được xóa thành công.'], 200);
+    /**
+     * Display a listing of products owned by the authenticated seller.
+     * Seller API: GET /api/seller/products
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function sellerProducts()
+    {
+        // Authorization handled by middleware 'role:seller'
+        $user = Auth::user();
+        $products = $user->products()->with('category')->paginate(10);
+
+        $products->getCollection()->transform(function ($product) {
+            if ($product->image) {
+                $product->image = Storage::url($product->image);
+            }
+            return $product;
+        });
+
+        return response()->json($products);
+    }
+
+    /**
+     * Display a listing of all products (for admin).
+     * Admin API: GET /api/admin/products
+     *
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function adminProducts()
+    {
+        // Authorization handled by middleware 'role:admin'
+        $products = Product::with(['category', 'user'])->paginate(10);
+        return response()->json($products);
+    }
+
+    /**
+     * Remove the specified product from storage by admin.
+     * Admin API: DELETE /api/admin/products/{product}
+     *
+     * @param  \App\Models\Product  $product
+     * @return \Illuminate\Http\JsonResponse
+     */
+    public function destroyByAdmin(int $productId)
+    {
+        // Authorization handled by middleware 'role:admin'
+        // Delete associated image file
+         $product = Product::withTrashed()->find($productId);
+
+         if (!$product) {
+                return response()->json(['message' => 'Product not found.'], 404);
+            }
+
+        if ($product->image && Storage::disk('public')->exists($product->image)) {
+            Storage::disk('public')->delete($product->image);
+        }
+
+        $product->forceDelete();
+        return response()->json(['message' => 'Product deleted by admin successfully.'], 200);
     }
 }

@@ -3,6 +3,7 @@
 namespace Database\Factories;
 
 use App\Models\Cart;
+use App\Models\User;
 use Illuminate\Database\Eloquent\Factories\Factory;
 
 /**
@@ -16,6 +17,7 @@ class CartFactory extends Factory
      * @var string
      */
     protected $model = Cart::class;
+
     /**
      * Define the model's default state.
      *
@@ -24,7 +26,8 @@ class CartFactory extends Factory
     public function definition(): array
     {
         return [
-            'user_id' => \App\Models\User::factory(), 
+            'user_id' => User::where('role', 'user')->inRandomOrder()->first()->id,
         ];
     }
 }
+

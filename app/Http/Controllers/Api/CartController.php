@@ -6,295 +6,184 @@ use App\Http\Controllers\Controller;
 use App\Models\Cart;
 use App\Models\CartItem;
 use App\Models\Product;
+use App\Models\Order;
+use App\Models\OrderItem;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
-use Illuminate\Validation\ValidationException;
-use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 
 class CartController extends Controller
 {
     /**
-     * Lấy hoặc tạo giỏ hàng cho người dùng/khách.
+     * Display the authenticated user's cart.
+     * User API: GET /api/cart
      *
-     * @param Request $request
-     * @return Cart
-     */
-    protected function getOrCreateCart(Request $request): Cart
-    {
-        if (Auth::check()) {
-            return Cart::firstOrCreate(
-                ['user_id' => Auth::id()],
-                ['session_id' => null] 
-            );
-        } else {
-            $sessionId = $request->session()->getId(); 
-
-            $cart = Cart::where('session_id', $sessionId)->first();
-            if ($cart && !$cart->user_id) {
-                return $cart; 
-            }
-            return Cart::firstOrCreate(
-                ['session_id' => $sessionId],
-                ['user_id' => null] 
-            );
-        }
-    }
-    /**
-     * Display a listing of the resource.
-     * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function viewCart(Request $request)
+    public function show()
     {
-        /** @var \App\Models\Cart $cart */
-        $cart = $this->getOrCreateCart($request);
+        $user = Auth::user();
+        $cart = $user->cart()->with('cartItems.product')->firstOrCreate([]); // Create cart if not exists
 
-        /** @var \Illuminate\Database\Eloquent\Collection|\App\Models\CartItem[] $cartItems */
-        $cartItems = $cart->cartItems()->with('product')->get();
-
-        $totalAmount = $cartItems->sum(function($item) {
-            return $item->quantity * ($item->product->price ?? 0);
+        // Calculate total amount for the cart
+        $totalAmount = $cart->cartItems->sum(function ($item) {
+            return $item->quantity * $item->product->price;
         });
 
         return response()->json([
-            'cart_id' => $cart->id,
-            'items' => $cartItems->map(function ($item) {
-                return [
-                    'cart_item_id' => $item->id,
-                    'product_id' => $item->product_id,
-                    'product_name' => $item->product->name ?? 'Sản phẩm không tồn tại',
-                    'product_price' => $item->product->price ?? 0,
-                    'quantity' => $item->quantity,
-                    'subtotal' => $item->quantity * ($item->product->price ?? 0),
-                    'product_image' => $item->product->image ?? null, 
-                    'product_stock' => $item->product->stock ?? 0, 
-                ];
-            }),
-            'total_amount' => $totalAmount,
-            'message' => 'Lấy thông tin giỏ hàng thành công.'
-        ], 200);
+            'cart' => $cart,
+            'total_amount' => $totalAmount
+        ]);
     }
 
     /**
-     * Add a product to the authenticated user's/guest's cart.
-     * Tên phương thức đổi từ store thành addToCart.
+     * Add a product to the authenticated user's cart.
+     * User API: POST /api/cart/add
+     *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function addToCart(Request $request)
+    public function add(Request $request)
     {
-        try {
-            $validatedData = $request->validate([
-                'product_id' => ['required', 'integer', 'exists:products,id'],
-                'quantity' => ['required', 'integer', 'min:1'],
-            ]);
-        } catch (ValidationException $e) {
-            return response()->json([
-                'message' => 'Lỗi xác thực',
-                'errors' => $e->errors()
-            ], 422);
+        $request->validate([
+            'product_id' => 'required|exists:products,id',
+            'quantity' => 'required|integer|min:1',
+        ]);
+
+        $user = Auth::user();
+        $cart = $user->cart()->firstOrCreate([]);
+        $product = Product::find($request->product_id);
+
+        if ($product->quantity < $request->quantity) {
+            return response()->json(['message' => 'Not enough stock for this product.'], 400);
         }
 
-        $product = Product::find($validatedData['product_id']);
-
-        if (!$product || $product->status !== 'active' || $product->stock <= 0) {
-            return response()->json(['message' => 'Sản phẩm không tồn tại, không hoạt động hoặc đã hết hàng.'], 404);
-        }
-
-        $cart = $this->getOrCreateCart($request);
-
-        $cartItem = $cart->cartItems()->firstOrNew(['product_id' => $product->id]);
-
-        $currentCartQuantity = $cartItem->exists ? $cartItem->quantity : 0;
-        $requestedQuantity = $validatedData['quantity'];
-        $newQuantity = $currentCartQuantity + $requestedQuantity;
-
-        if ($product->stock < $newQuantity) {
-            return response()->json([
-                'message' => 'Số lượng thêm vào vượt quá số lượng tồn kho hiện có.',
-                'current_stock' => $product->stock,
-                'current_quantity_in_cart' => $currentCartQuantity,
-                'requested_quantity_to_add' => $requestedQuantity,
-                'total_quantity_after_add' => $newQuantity
-            ], 400);
-        }
-
-        $cartItem->quantity = $newQuantity;
+        $cartItem = $cart->cartItems()->firstOrNew(['product_id' => $request->product_id]);
+        $cartItem->quantity += $request->quantity;
         $cartItem->save();
 
-        return response()->json([
-            'message' => 'Sản phẩm đã được thêm/cập nhật số lượng trong giỏ hàng thành công.',
-            'cart_item' => $cartItem->load('product'), 
-            'cart_id' => $cart->id
-        ], 200); 
+        $cart->load('cartItems.product'); // Reload to get updated data
+        return response()->json($cart, 200);
     }
 
     /**
-     * Update the specified resource in storage.
+     * Update the quantity of a product in the cart.
+     * User API: PUT /api/cart/update/{cartItem}
+     *
      * @param  \Illuminate\Http\Request  $request
      * @param  \App\Models\CartItem  $cartItem
      * @return \Illuminate\Http\JsonResponse
      */
     public function update(Request $request, CartItem $cartItem)
     {
-        try {
-            $validatedData = $request->validate([
-                'quantity' => ['required', 'integer', 'min:0'], 
-            ]);
-        } catch (ValidationException $e) {
-            return response()->json([
-                'message' => 'Lỗi xác thực dữ liệu đầu vào.',
-                'errors' => $e->errors()
-            ], 422);
+        // Authorization: Ensure the cart item belongs to the authenticated user's cart
+        if ($cartItem->cart->user_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized to update this cart item.'], 403);
         }
 
-        $userCart = $this->getOrCreateCart($request);
-        if ($cartItem->cart_id !== $userCart->id) {
-            return response()->json([
-                'message' => 'Không được phép: Mục giỏ hàng không thuộc về giỏ hàng của bạn.'
-            ], 403); 
+        $request->validate([
+            'quantity' => 'required|integer|min:0',
+        ]);
+
+        $product = $cartItem->product;
+        if ($product->quantity < $request->quantity) {
+            return response()->json(['message' => 'Not enough stock for this product.'], 400);
         }
-
-        $product = $cartItem->product; 
-
-        if (!$product || $product->status !== 'active') {
-            return response()->json(['message' => 'Sản phẩm liên quan không tồn tại hoặc không hoạt động.'], 404);
-        }
-
-        $requestedQuantity = $validatedData['quantity'];
-        $oldQuantityInCart = $cartItem->quantity;
 
         if ($request->quantity === 0) {
             $cartItem->delete();
-            return response()->json([
-                'message' => 'Sản phẩm đã được xóa khỏi giỏ hàng.'
-            ], 200);
-        }
-
-        if ($request->quantity > $product->stock + $cartItem->getOriginal('quantity')) {
-             return response()->json([
-                 'message' => 'Số lượng yêu cầu vượt quá số lượng tồn kho hiện có.',
-                 'available_stock' => $product->stock
-             ], 400);
-        }
-
-        $stockAvailableForUpdate = $product->stock + $oldQuantityInCart;
-
-        if ($requestedQuantity > $stockAvailableForUpdate) {
-            return response()->json([
-                'message' => 'Số lượng yêu cầu vượt quá số lượng tồn kho hiện có.',
-                'current_stock_on_hand' => $product->stock, 
-                'current_quantity_in_cart' => $oldQuantityInCart, 
-                'maximum_possible_quantity_in_cart' => $stockAvailableForUpdate
-            ], 400);
-        }
-
-        if ($requestedQuantity !== $oldQuantityInCart) {
-            $cartItem->quantity = $requestedQuantity;
-            $cartItem->save(); 
         } else {
-            return response()->json([
-                'message' => 'Số lượng không thay đổi, không cần cập nhật.'
-            ], 200);
+            $cartItem->quantity = $request->quantity;
+            $cartItem->save();
         }
 
-        return response()->json([
-            'message' => 'Số lượng mặt hàng trong giỏ hàng đã được cập nhật thành công.',
-            'cart_item' => $cartItem->load('product')
-        ]);
+        $cartItem->cart->load('cartItems.product'); // Reload cart to get updated data
+        return response()->json($cartItem->cart, 200);
     }
 
     /**
-     * Remove the specified resource from storage.
-     *  
-     * @param  \Illuminate\Http\Request  $request
+     * Remove a product from the cart.
+     * User API: DELETE /api/cart/remove/{cartItem}
+     *
      * @param  \App\Models\CartItem  $cartItem
      * @return \Illuminate\Http\JsonResponse
      */
-    public function destroy(Request $request, CartItem $cartItem)
+    public function remove(CartItem $cartItem)
     {
-        $userCart = $this->getOrCreateCart($request);
-        if ($cartItem->cart_id !== $userCart->id) {
-            return response()->json([
-                'message' => 'Không được phép: Mục giỏ hàng không thuộc về giỏ hàng của bạn.'
-            ], 403);
+        // Authorization: Ensure the cart item belongs to the authenticated user's cart
+        if ($cartItem->cart->user_id !== Auth::id()) {
+            return response()->json(['message' => 'Unauthorized to remove this cart item.'], 403);
         }
 
         $cartItem->delete();
-
-        return response()->json([
-            'message' => 'Sản phẩm đã được xóa khỏi giỏ hàng thành công.'
-        ]);
+        $cartItem->cart->load('cartItems.product'); // Reload cart to get updated data
+        return response()->json($cartItem->cart, 200);
     }
 
     /**
-     * Clear the cart for the authenticated user or guest.
+     * Checkout the cart and create an order.
+     * User API: POST /api/cart/checkout
+     *
      * @param  \Illuminate\Http\Request  $request
      * @return \Illuminate\Http\JsonResponse
      */
-    public function clear(Request $request)
+    public function checkout(Request $request)
     {
-        $cart = $this->getOrCreateCart($request);
+        $user = Auth::user();
+        $cart = $user->cart()->with('cartItems.product')->first();
 
-        $cartItems = $cart->cartItems;
-
-        foreach ($cartItems as $item) {
-            $item->delete(); 
+        if (!$cart || $cart->cartItems->isEmpty()) {
+            return response()->json(['message' => 'Your cart is empty.'], 400);
         }
 
-        return response()->json([
-            'message' => 'Giỏ hàng đã được làm sạch thành công.'
-        ]);
-    }
-
-    /**
-     * Merge guest cart with authenticated user's cart.
-     * This method assumes that the guest cart is identified by the session ID.
-     * @param  \Illuminate\Http\Request  $request
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function mergeCarts(Request $request)
-    {
-        if (!Auth::check()) {
-            return response()->json(['message' => 'Người dùng chưa được xác thực.'], 401);
+        // Validate stock before creating order
+        foreach ($cart->cartItems as $item) {
+            if ($item->product->quantity < $item->quantity) {
+                return response()->json(['message' => "Not enough stock for product: {$item->product->name}"], 400);
+            }
         }
 
-        $userCart = Cart::firstOrCreate(['user_id' => Auth::id()]);
-        $guestCart = Cart::where('session_id', $request->session()->getId())->first();
+        DB::beginTransaction();
+        try {
+            $totalAmount = 0;
+            $order = Order::create([
+                'user_id' => $user->id,
+                'total_amount' => 0, // Will be updated after adding items
+                'status' => 'pending',
+                // You might want to add shipping_address and phone_number here from request
+                // 'shipping_address' => $request->shipping_address,
+                // 'phone_number' => $request->phone_number,
+            ]);
 
-        if ($guestCart && $guestCart->id !== $userCart->id) {
-            $guestCart->load('cartItems.product');
-            foreach ($guestCart->cartItems as $guestItem) {
-                $product = $guestItem->product;
+            foreach ($cart->cartItems as $item) {
+                OrderItem::create([
+                    'order_id' => $order->id,
+                    'product_id' => $item->product_id,
+                    'quantity' => $item->quantity,
+                    'price' => $item->product->price, // Price at the time of purchase
+                ]);
 
-                if (!$product || $product->status !== 'active' || $product->stock <= 0) {
-                    Log::warning("Skipping guest cart item {$guestItem->id} for product {$guestItem->product_id} due to invalid product or zero stock.");
-                    continue; 
-                }
+                // Deduct stock from product
+                $product = $item->product;
+                $product->quantity -= $item->quantity;
+                $product->save();
 
-                /** @var \App\Models\CartItem $userCartItem */
-                $currentQuantityInUserCart = $userCartItem->exists ? $userCartItem->quantity : 0;
-                $quantityToMerge = $guestItem->quantity;
-                $totalQuantityAfterMerge = $currentQuantityInUserCart + $quantityToMerge;
-
-                $userCartItem = $userCart->cartItems()->firstOrNew(['product_id' => $product->id]);
-
-                if ($totalQuantityAfterMerge > ($product->stock + $currentQuantityInUserCart)) { 
-                    $userCartItem->quantity = $product->stock + $currentQuantityInUserCart; 
-                    Log::warning("Merged guest cart item {$guestItem->id} for product {$guestItem->product_id} with limited quantity due to stock constraint. Max allowed: {$userCartItem->quantity}");
-                } else {
-                    $userCartItem->quantity = $totalQuantityAfterMerge;
-                }
-
-                $userCartItem->save();
+                $totalAmount += ($item->quantity * $item->product->price);
             }
 
-            $guestCart->cartItems()->delete();
-            $guestCart->delete();
-            
-            return response()->json(['message' => 'Giỏ hàng khách đã được hợp nhất thành công.'], 200);
-        }
+            $order->total_amount = $totalAmount;
+            $order->save();
 
-        return response()->json(['message' => 'Không có giỏ hàng khách để hợp nhất hoặc giỏ hàng đã được hợp nhất.'], 200);
+            // Clear the cart after successful checkout
+            $cart->cartItems()->delete();
+            $cart->delete();
+
+            DB::commit();
+            return response()->json(['message' => 'Order placed successfully!', 'order' => $order->load('orderItems.product')], 201);
+
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json(['message' => 'Failed to place order: ' . $e->getMessage()], 500);
+        }
     }
 }

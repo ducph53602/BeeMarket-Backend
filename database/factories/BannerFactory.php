@@ -20,17 +20,15 @@ class BannerFactory extends Factory
     /**
      * Define the model's default state.
      *
-     * @return array<string, mixed>
+     * @return array
      */
     public function definition(): array
     {
         return [
-            'title' => $this->faker->sentence(3),
-            'subtitle' => $this->faker->sentence(5),
-            'image_path' => 'banners/' . $this->faker->uuid() . '.jpg', // Example image path
-            'link' => $this->faker->url(),
-            'is_active' => $this->faker->boolean(80), // 80% chance of being active
-            'order' => $this->faker->unique()->numberBetween(1, 10),
+            'title' => fake()->sentence(rand(3, 6)), // A short sentence for the banner title
+            'image_url' => fake()->imageUrl(1200, 400, 'advertisement', true, 'Faker', true), // Placeholder image URL for banners
+            'target_url' => fake()->url(), // A random URL for the banner to link to
+            'is_active' => fake()->boolean(80), // 80% chance of being active
         ];
     }
 }
